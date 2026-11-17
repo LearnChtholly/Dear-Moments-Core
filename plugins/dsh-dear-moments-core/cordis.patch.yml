@@ -1,0 +1,4 @@
+- insert:
+    - id: dsh-dear-moments-core
+      name: dsh-dear-moments-core
+      config: {}

@@ -1,0 +1,2 @@
+import {Store} from '../app/store.mjs'; import {embedMany} from '../app/providers.mjs';
+const s=new Store(':memory:'); const p={kind:'compatible',embeddingKind:'compatible',baseUrl:'http://127.0.0.1:9',embeddingBaseUrl:'http://127.0.0.1:9',embedding:'x',embeddingCloudConsent:false}; try{await embedMany(p,['x']);}catch(e){console.log(e.message)} s.close();
