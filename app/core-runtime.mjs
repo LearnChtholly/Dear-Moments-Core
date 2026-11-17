@@ -2,7 +2,7 @@ import { MemoryWorker } from './memory.mjs';
 export class CoreRuntime {
     constructor(store, memory) {
         Object.assign(this, { store, memory });
-        this.worker = new MemoryWorker(memory);
+        this.worker = new MemoryWorker(memory, { busy: () => this.indexing });
         this.indexing = false;
     }
     ingest(p) {

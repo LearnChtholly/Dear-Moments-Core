@@ -20,7 +20,6 @@ const runtime = new CoreRuntime(store, memory);
 if (process.env.DM_CORE_MEMORY_MODEL)
     store.configure('memoryModel', { ...store.setting('memoryModel'), name: process.env.DM_CORE_MEMORY_MODEL });
 runtime.start();
-const sessions = new Map();
 const dashboard = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
 const embeddingEnv = process.env.DM_EMBEDDING_API_KEY || '';
 const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
@@ -29,19 +28,20 @@ async function body(req) { req.setEncoding('utf8'); let b = ''; for await (const
     if (Buffer.byteLength(b) > 16 * 1024 * 1024)
         throw Error('request too large');
 } return JSON.parse(b || '{}'); }
-function conversation(sessionId) { const title = 'DSH ' + String(sessionId).slice(0, 50); let c = sessions.get(String(sessionId)); if (c)
-    return c; c = store.conversations().find(x => x.title === title) || store.conversation(title, 'private'); sessions.set(String(sessionId), c); return c; }
 const ingest = p => runtime.ingest(p);
 const server = http.createServer(async (req, res) => { try {
-    if (req.headers.origin)
-        return json(res, 403, { ok: false, error: 'browser origin rejected' });
+    const port = server.address().port;
+    const hosts = ['127.0.0.1:' + port, 'localhost:' + port];
+    if (!hosts.includes(req.headers.host)) return json(res, 403, {ok:false,error:'invalid host'});
+    if (req.headers.origin && !hosts.map(host => 'http://' + host).includes(req.headers.origin))
+        return json(res, 403, {ok:false,error:'browser origin rejected'});
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(dashboard.replace('__CORE_TOKEN__', token));
         return;
     }
     const a = Buffer.from(req.headers.authorization || ''), e = Buffer.from('Bearer ' + token);
-    if (req.headers.origin || a.length !== e.length || !timingSafeEqual(a, e))
+    if (a.length !== e.length || !timingSafeEqual(a, e))
         return json(res, 401, { ok: false, error: 'unauthorized' });
     if (req.method === 'GET' && req.url === '/health')
         return json(res, 200, { ok: true, db: file });

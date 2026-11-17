@@ -19,6 +19,8 @@ test('real server ingests, deduplicates, rejects origins and exits cleanly',asyn
   assert.equal(first.ok,true);assert.equal(again.value.duplicate,true);assert.equal(first.value.id,again.value.id);
   const rejected=await fetch(d.url+'/ingest',{method:'POST',headers:{Origin:'https://example.invalid',Authorization:'Bearer '+d.token},body:'{}'});
   assert.equal(rejected.status,403);
+  const own=await fetch(d.url+'/status',{method:'POST',headers:{Origin:d.url,Authorization:'Bearer '+d.token,'Content-Type':'application/json'},body:'{}'});
+  assert.equal(own.status,200);assert.equal((await own.json()).ok,true);
  }finally{
   child.kill('SIGTERM');
   await Promise.race([exit,new Promise((_,reject)=>setTimeout(()=>reject(Error('shutdown timed out')),5000).unref())]);

@@ -26,7 +26,7 @@ node server.mjs
 
 默认可使用本地 Ollama，也支持 OpenAI-compatible `/embeddings` 云端接口。云端 Embedding 必须显式授权，API Key 通过环境变量提供，不写入数据库。
 
-## 0.1.2 运行和恢复
+## 0.1.3 运行和恢复
 
 最低 Node.js 版本为 22.13.0，推荐维护中的 Node.js 24。根包保持 private，通过 GitHub 源码和压缩包分发。DSH 插件可独立打包。
 
