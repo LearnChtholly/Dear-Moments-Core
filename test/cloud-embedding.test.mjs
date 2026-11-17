@@ -1,2 +1,5 @@
-import {Store} from '../app/store.mjs'; import {embedMany} from '../app/providers.mjs';
-const s=new Store(':memory:'); const p={kind:'compatible',embeddingKind:'compatible',baseUrl:'http://127.0.0.1:9',embeddingBaseUrl:'http://127.0.0.1:9',embedding:'x',embeddingCloudConsent:false}; try{await embedMany(p,['x']);}catch(e){console.log(e.message)} s.close();
+import test from 'node:test';import assert from 'node:assert/strict';import {embedMany} from '../app/providers.mjs';
+test('unapproved cloud embedding is rejected before network',async()=>{
+ const p={kind:'compatible',embeddingKind:'compatible',baseUrl:'https://example.invalid',embeddingBaseUrl:'https://example.invalid',embedding:'x',embeddingCloudConsent:false};
+ await assert.rejects(()=>embedMany(p,['x']),/授权|consent/i);
+});

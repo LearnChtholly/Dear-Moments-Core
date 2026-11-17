@@ -190,14 +190,20 @@ export class Store {
       .run();
   }
   transaction(fn) {
-    this.db.exec("BEGIN IMMEDIATE");
+    const depth = this.transactionDepth || 0;
+    const savepoint = 'nested_' + depth;
+    this.db.exec(depth ? 'SAVEPOINT ' + savepoint : 'BEGIN IMMEDIATE');
+    this.transactionDepth = depth + 1;
     try {
       const result = fn();
-      this.db.exec("COMMIT");
+      this.db.exec(depth ? 'RELEASE ' + savepoint : 'COMMIT');
       return result;
-    } catch (e) {
-      this.db.exec("ROLLBACK");
-      throw e;
+    } catch (error) {
+      if (depth) this.db.exec('ROLLBACK TO ' + savepoint + '; RELEASE ' + savepoint);
+      else this.db.exec('ROLLBACK');
+      throw error;
+    } finally {
+      this.transactionDepth = depth;
     }
   }
   setting(key) {

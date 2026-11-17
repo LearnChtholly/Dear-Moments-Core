@@ -17,7 +17,7 @@
 核心服务必须先启动，默认读取：
 
 ```text
-%USERPROFILE%\Desktop\Dear-Moments-Core-0.1.0\data\core.json
+%USERPROFILE%\.dear-moments-core\core.json
 ```
 
 也可以用 `DM_CORE_DESCRIPTOR` 或插件配置 `coreFile` 指定。
@@ -47,3 +47,4 @@ DSH 用户消息 / 助手消息
 ## Embedding
 
 Core 默认可使用本地 Ollama，也支持 OpenAI-compatible `/embeddings` 云端接口。云端 Embedding 必须显式授权，API Key 通过环境变量提供，不写入数据库。
+0.1.2 会将待提交消息保存到用户目录下的 dsh-outbox.json，默认最多 10000 条。独立实例可用 queueFile 指定独立队列。服务 API 提供 search、source 和 status。

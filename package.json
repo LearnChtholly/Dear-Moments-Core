@@ -1,6 +1,6 @@
 {
   "name": "dear-moments-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,6 @@
     "server": "node server.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   }
 }
