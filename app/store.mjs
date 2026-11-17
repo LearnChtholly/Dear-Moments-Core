@@ -1,164 +1,58 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { mkdirSync,appendFileSync,statSync,existsSync } from "node:fs";
+import { mkdirSync, appendFileSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 import { migrateMemory } from "./memory.mjs";
-import{MAX_TEXT_CHARACTERS,queryText}from'./text-chunks.mjs';
+import { MAX_TEXT_CHARACTERS, queryText } from "./text-chunks.mjs";
 
 export const id = () => randomUUID();
 export const now = () => new Date().toISOString();
 export const day = (date = new Date()) =>
   new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(date);
-import { migrateSupervisor, supervisorDefaults } from "./memory-supervisor.mjs";
+import { migrateSupervisor } from "./schema-migration.mjs";
 import { hasEvidence } from "./memory-query.mjs";
 
-export const defaults = {
-  memorySupervisor: supervisorDefaults,
-  chatSync:{mode:'auto',sessionId:''},
-  diary:{mode:'local',modelName:'',autoWrite:false,maxTokens:1200},
-  character: {
-    id: null,
-    createdAt: null,
-    name: "",
-    persona: "",
-    mode: "fixed",
-    asset: null,
-    dragAsset: null,
-    renderer: "mesh",
-    scale: 1,
-    userTitle: "",
-    language: "zh-CN",
-    style: "自然、亲切，表达清楚，不要过度讨好。",
-  },
-  model: {
-    kind: "ollama",
-    baseUrl: "http://127.0.0.1:11434",
-    name: "",
-    context: 4096,
-    maxTokens: 1024,
-    cloudConsent: false,
-    fallback: "",
-    embedding: "",
-  },
-  speech: {
-    engine: "compatible",
-    referenceAudio: "",
-    referenceText: "",
-    referenceLanguage: "zh",
-    sttUrl: "",
-    sttModel: "",
-    ttsUrl: "",
-    ttsModel: "",
-    voice: "",
-    enabled: false,
-    cloudConsent: false,
-    rate: 1,
-    volume: 0.8,
-    device: "",
-  },
-  appearance: {
-    dark: false,
-    reducedMotion: false,
-    petVisible: true,
-    clickThrough: false,
-    petLocked: false,
-    petAlwaysOnTop: true,
-    petControlsVersion: 1,
-  },
-  integrations: { mcpUrl: "", onebotUrl: "" },
-  localModel: {
-    kind: "ollama",
-    baseUrl: "http://127.0.0.1:11434",
-    name: "",
-    context: 4096,
-    maxTokens: 1024,
-    cloudConsent: false,
-    keepAlive: "2m",
-  },
-  memoryModel: {
-    kind: "ollama",
-    baseUrl: "http://127.0.0.1:11434",
-    name: "",
-    context: 4096,
-    maxTokens: 1600,
-    embedding: "",
-    embeddingKind: "ollama",
-    embeddingBaseUrl: "",
-    embeddingApiKeyEnv: "DM_EMBEDDING_API_KEY",
-    embeddingCloudConsent: false,
-    embeddingNumGpu: 0,
-    numGpu: 0,
-    keepAlive: "0",
-  },
-  memoryPolicy: { enabled: true, paused: false,autoDiary:false,autoExcludeTests:true },
-  styleLearning: { enabled: true, frozen: false },
-  privacy: { cloudApprovals: [] },
-  routing: { mode: "cloud-first", useDshWhenConnected: true },
-  expressions: {
-    enabled: false,
-    ownerCharacter: null,
-    baseAssets: [],
-    normalAsset: null,
-    chibiAsset: null,
-    atlas: null,
-    bonk: null,
-    feeding: null,
-    mode: "auto",
-    allowModelStickers: true,
-    stickers: [],
-  },
-  onboarding: false,
-};
-export const tokenize = (text) => [
-  ...new Set(text.toLowerCase().match(/[a-z0-9_.-]+|[\u3400-\u9fff]/g) || []),
-];
-export function timeRange(query, clock = new Date()) {
-  const today = day(clock),
-    midnight = new Date(today + "T00:00:00+08:00").getTime(),
-    span = 86400000;
-  const explicit = query.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-  let start = null,
-    end = null;
-  if (explicit) {
-    start = new Date(explicit + "T00:00:00+08:00").getTime();
-    end = start + span;
-  } else if (/前天/.test(query)) {
-    start = midnight - 2 * span;
-    end = start + span;
-  } else if (/昨天/.test(query)) {
-    start = midnight - span;
-    end = midnight;
-  } else if (/今天/.test(query)) {
-    start = midnight;
-    end = midnight + span;
-  } else if (/最近(?:7|七)天|近一周/.test(query)) {
-    start = midnight - 6 * span;
-    end = midnight + span;
-  } else if (/上周|本周/.test(query)) {
-    const weekday = new Date(midnight + 8 * 3600000).getUTCDay() || 7;
-    start = midnight - (weekday - 1) * span;
-    if (/上周/.test(query)) start -= 7 * span;
-    end = start + 7 * span;
-  }
-  return start !== null && Number.isFinite(start)
-    ? {
-        from: new Date(start).toISOString(),
-        to: new Date(end - 1).toISOString(),
-      }
-    : {};
-}
-
+export { defaults } from "./settings.mjs";
+import { defaults, legacyDefaults } from "./settings.mjs";
+import { tokenize, timeRange } from "./store-query.mjs";
+export { tokenize, timeRange } from "./store-query.mjs";
 export class Store {
   constructor(filename) {
     mkdirSync(path.dirname(filename), { recursive: true });
-    this.filename=filename;this.auditFile=filename===':memory:'?null:filename+'.audit.jsonl';
-    this.audit('opening',{walBytes:existsSync(filename+'-wal')?statSync(filename+'-wal').size:0,mainBytes:existsSync(filename)?statSync(filename).size:0});
-    if(existsSync(filename)&&statSync(filename).size){let checking;try{checking=new DatabaseSync(filename,{readOnly:true});const check=checking.prepare('PRAGMA quick_check').all();if(check.some(row=>Object.values(row)[0]!=='ok'))throw Error('integrity check failed');}catch(error){this.audit('open-failed',{sqliteCode:error.errcode});if(error.errcode===5||error.errcode===6)throw Error('数据库由正在运行的 Dear Moments 核心占用，请通过本地接口访问，或关闭软件后重试。');throw Error('数据库完整性异常，已停止写入且未重置原库。请使用完整备份恢复。');}finally{checking?.close();}}
+    this.filename = filename;
+    this.auditFile = filename === ":memory:" ? null : filename + ".audit.jsonl";
+    this.audit("opening", {
+      walBytes: existsSync(filename + "-wal")
+        ? statSync(filename + "-wal").size
+        : 0,
+      mainBytes: existsSync(filename) ? statSync(filename).size : 0,
+    });
+    if (existsSync(filename) && statSync(filename).size) {
+      let checking;
+      try {
+        checking = new DatabaseSync(filename, { readOnly: true });
+        const check = checking.prepare("PRAGMA quick_check").all();
+        if (check.some((row) => Object.values(row)[0] !== "ok"))
+          throw Error("integrity check failed");
+      } catch (error) {
+        this.audit("open-failed", { sqliteCode: error.errcode });
+        if (error.errcode === 5 || error.errcode === 6)
+          throw Error(
+            "数据库由正在运行的 Dear Moments 核心占用，请通过本地接口访问，或关闭软件后重试。",
+          );
+        throw Error(
+          "数据库完整性异常，已停止写入且未重置原库。请使用完整备份恢复。",
+        );
+      } finally {
+        checking?.close();
+      }
+    }
     this.db = new DatabaseSync(filename);
     const oldVersion = this.db
       .prepare("PRAGMA user_version")
       .get().user_version;
-    this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE; PRAGMA foreign_keys=ON;
+    this.db
+      .exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY,title TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'private',created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,status TEXT NOT NULL,assets TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL);
@@ -174,10 +68,20 @@ export class Store {
       CREATE INDEX IF NOT EXISTS event_time ON events(created_at);
       CREATE INDEX IF NOT EXISTS memory_scope ON memories(scope,status,created_at);
       `);
-    this.audit('opened',{sqlite:this.db.prepare('SELECT sqlite_version() version,sqlite_source_id() source').get(),journal:this.db.prepare('PRAGMA journal_mode').get(),locking:this.db.prepare('PRAGMA locking_mode').get()});
+    this.audit("opened", {
+      sqlite: this.db
+        .prepare("SELECT sqlite_version() version,sqlite_source_id() source")
+        .get(),
+      journal: this.db.prepare("PRAGMA journal_mode").get(),
+      locking: this.db.prepare("PRAGMA locking_mode").get(),
+    });
     migrateMemory(this.db, filename, oldVersion);
-    try { migrateSupervisor(this.db, filename, oldVersion); }
-    catch (error) { this.db.close(); throw error; }
+    try {
+      migrateSupervisor(this.db, filename, oldVersion);
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
     this.db
       .prepare(
         "UPDATE tasks SET status='interrupted',result='应用退出时任务中断，未自动重试。' WHERE status='running'",
@@ -191,16 +95,17 @@ export class Store {
   }
   transaction(fn) {
     const depth = this.transactionDepth || 0;
-    const savepoint = 'nested_' + depth;
-    this.db.exec(depth ? 'SAVEPOINT ' + savepoint : 'BEGIN IMMEDIATE');
+    const savepoint = "nested_" + depth;
+    this.db.exec(depth ? "SAVEPOINT " + savepoint : "BEGIN IMMEDIATE");
     this.transactionDepth = depth + 1;
     try {
       const result = fn();
-      this.db.exec(depth ? 'RELEASE ' + savepoint : 'COMMIT');
+      this.db.exec(depth ? "RELEASE " + savepoint : "COMMIT");
       return result;
     } catch (error) {
-      if (depth) this.db.exec('ROLLBACK TO ' + savepoint + '; RELEASE ' + savepoint);
-      else this.db.exec('ROLLBACK');
+      if (depth)
+        this.db.exec("ROLLBACK TO " + savepoint + "; RELEASE " + savepoint);
+      else this.db.exec("ROLLBACK");
       throw error;
     } finally {
       this.transactionDepth = depth;
@@ -208,17 +113,25 @@ export class Store {
   }
   setting(key) {
     const row = this.db.prepare("SELECT value FROM meta WHERE key=?").get(key);
-    if (!row) return structuredClone(defaults[key]);
+    if (!row) return structuredClone(defaults[key] ?? legacyDefaults[key]);
     let value;
-    try { value = JSON.parse(row.value); } catch { return structuredClone(defaults[key]); }
-    if (defaults[key] && typeof defaults[key] === "object" && !Array.isArray(defaults[key]))
+    try {
+      value = JSON.parse(row.value);
+    } catch {
+      return structuredClone(defaults[key] ?? legacyDefaults[key]);
+    }
+    if (
+      defaults[key] &&
+      typeof defaults[key] === "object" &&
+      !Array.isArray(defaults[key])
+    )
       return value && typeof value === "object" && !Array.isArray(value)
-        ? { ...structuredClone(defaults[key]), ...value }
-        : structuredClone(defaults[key]);
+        ? { ...structuredClone(defaults[key] ?? legacyDefaults[key]), ...value }
+        : structuredClone(defaults[key] ?? legacyDefaults[key]);
     return value;
   }
   configure(key, value) {
-    if (!(key in defaults)) throw Error("未知设置");
+    if (!(key in defaults) && !(key in legacyDefaults)) throw Error("未知设置");
     this.db
       .prepare("INSERT OR REPLACE INTO meta VALUES(?,?)")
       .run(key, JSON.stringify(value));
@@ -306,7 +219,11 @@ export class Store {
         JSON.stringify(assets),
         row.created_at,
       );
-    if (role === "assistant" && status === "complete" && cid.startsWith("dsh:")) {
+    if (
+      role === "assistant" &&
+      status === "complete" &&
+      cid.startsWith("dsh:")
+    ) {
       this.onDshReply?.(row.id);
     }
     return row;
@@ -324,7 +241,8 @@ export class Store {
     embedding = null,
   ) {
     if (!content?.trim()) throw Error("记忆内容不能为空");
-    if(content.length>MAX_TEXT_CHARACTERS)throw Error('记忆超过100万字符，请分段导入');
+    if (content.length > MAX_TEXT_CHARACTERS)
+      throw Error("记忆超过100万字符，请分段导入");
     if (
       source &&
       !this.db
@@ -372,7 +290,8 @@ export class Store {
   correctMemory(mid, content) {
     return this.transaction(() => {
       if (!content?.trim()) throw Error("记忆不能为空");
-      if(content.length>MAX_TEXT_CHARACTERS)throw Error('记忆超过100万字符，请分段导入');
+      if (content.length > MAX_TEXT_CHARACTERS)
+        throw Error("记忆超过100万字符，请分段导入");
       this.db
         .prepare(
           "UPDATE memories SET content=?,embedding=NULL,updated_at=? WHERE id=?",
@@ -382,7 +301,9 @@ export class Store {
       this.db
         .prepare("INSERT INTO memory_fts VALUES(?,?)")
         .run(mid, tokenize(content).join(" "));
-      this.db.prepare('DELETE FROM diaries WHERE character_id=?').run(this.setting('character').id||'default');
+      this.db
+        .prepare("DELETE FROM diaries WHERE character_id=?")
+        .run(this.setting("character").id || "default");
       this.event("memory.corrected", { memory_id: mid });
     });
   }
@@ -390,7 +311,9 @@ export class Store {
     this.transaction(() => {
       this.db.prepare("DELETE FROM memory_fts WHERE id=?").run(mid);
       this.db.prepare("DELETE FROM memories WHERE id=?").run(mid);
-      this.db.prepare('DELETE FROM diaries WHERE character_id=?').run(this.setting('character').id||'default');
+      this.db
+        .prepare("DELETE FROM diaries WHERE character_id=?")
+        .run(this.setting("character").id || "default");
       this.event("memory.deleted", { memory_id: mid });
     });
   }
@@ -410,7 +333,9 @@ export class Store {
         this.db.prepare("DELETE FROM events WHERE source_id=?").run(mid);
       }
       this.db.prepare("DELETE FROM conversations WHERE id=?").run(cid);
-      this.db.prepare('DELETE FROM diaries WHERE character_id=?').run(this.setting('character').id||'default');
+      this.db
+        .prepare("DELETE FROM diaries WHERE character_id=?")
+        .run(this.setting("character").id || "default");
     });
   }
   search(
@@ -426,7 +351,7 @@ export class Store {
       evidenceOnly = false,
     } = {},
   ) {
-    query=queryText(query);
+    query = queryText(query);
     const range = evidenceOnly ? {} : timeRange(query);
     from = from || range.from || "";
     to = to || range.to || "";
@@ -444,7 +369,8 @@ export class Store {
       "";
     if (/最早/.test(query))
       all.sort((a, b) => a.created_at.localeCompare(b.created_at));
-    if (!query.trim() && !vector && !entity) return evidenceOnly ? [] : all.slice(0, limit);
+    if (!query.trim() && !vector && !entity)
+      return evidenceOnly ? [] : all.slice(0, limit);
     const tokens = tokenize(query),
       scores = new Map();
     const add = (rows) =>
@@ -463,7 +389,11 @@ export class Store {
             .map((t) => '"' + t.replaceAll('"', "") + '"')
             .join(" OR "),
         )
-        .filter((m) => allowed.has(m.id) && (!evidenceOnly || hasEvidence(allowed.get(m.id).content, lexical)));
+        .filter(
+          (m) =>
+            allowed.has(m.id) &&
+            (!evidenceOnly || hasEvidence(allowed.get(m.id).content, lexical)),
+        );
       add(matches);
     }
     if (vector) {
@@ -495,7 +425,8 @@ export class Store {
       );
     }
     if (entity && !evidenceOnly) add(all.filter((m) => m.entity === entity));
-    if (!evidenceOnly && (from || to || /最近|最早/.test(query))) add(all.slice(0, 40));
+    if (!evidenceOnly && (from || to || /最近|最早/.test(query)))
+      add(all.slice(0, 40));
     return [...scores]
       .sort((a, b) => b[1] - a[1])
       .slice(0, limit)
@@ -520,18 +451,26 @@ export class Store {
       return records.length;
     });
   }
-  diaryRecords(date,character=this.setting('character').id||'default') {
+  diaryRecords(date, character = this.setting("character").id || "default") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Error("日期格式错误");
     const rows = this.db
       .prepare(
         "SELECT * FROM messages WHERE status='complete' AND date(created_at,'+8 hours')=? AND conversation_id IN (SELECT id FROM conversations WHERE scope='private' AND character_id=?) ORDER BY created_at",
       )
-      .all(date,character)
-      .filter(m=>['user','assistant'].includes(m.role)&&!this.db.prepare("SELECT 1 FROM memory_units u,json_each(u.source_refs) r WHERE u.character_id=? AND u.status!='active' AND r.value=?").get(character,m.id));
+      .all(date, character)
+      .filter(
+        (m) =>
+          ["user", "assistant"].includes(m.role) &&
+          !this.db
+            .prepare(
+              "SELECT 1 FROM memory_units u,json_each(u.source_refs) r WHERE u.character_id=? AND u.status!='active' AND r.value=?",
+            )
+            .get(character, m.id),
+      );
     return rows;
   }
   diary(date) {
-    const rows=this.diaryRecords(date);
+    const rows = this.diaryRecords(date);
     if (!rows.length) throw Error("这一天还没有已完成的对话，不生成虚构日记。");
     const body =
       `# ${date} · 一起度过的时光\n\n以下摘录来自当天的实际对话，保留原话供回溯。\n\n` +
@@ -557,10 +496,14 @@ export class Store {
         date,
         body,
         JSON.stringify(diary.sources),
-        diary.created_at,this.setting('character').id||'default',
+        diary.created_at,
+        this.setting("character").id || "default",
       );
     this.event("diary.generated", { day: date, sources: diary.sources });
-    const saved=this.db.prepare('SELECT * FROM diaries WHERE day=? AND character_id=?').get(date,this.setting('character').id||'default');return {...saved,sources:JSON.parse(saved.sources)};
+    const saved = this.db
+      .prepare("SELECT * FROM diaries WHERE day=? AND character_id=?")
+      .get(date, this.setting("character").id || "default");
+    return { ...saved, sources: JSON.parse(saved.sources) };
   }
   snapshot() {
     return {
@@ -571,9 +514,20 @@ export class Store {
         memories: this.db.prepare("SELECT count(*) AS n FROM memories").get().n,
       },
       diaries: this.db
-        .prepare('SELECT * FROM diaries WHERE character_id=? ORDER BY day DESC')
-        .all(this.setting('character').id||'default')
-        .map((d) => {const row=this.db.prepare("SELECT payload FROM events WHERE source_id=? AND type='diary.composed' ORDER BY created_at DESC LIMIT 1").get(d.id);let model;try{model=JSON.parse(row?.payload||'{}').model;}catch{}return {...d,sources:JSON.parse(d.sources),model};}),
+        .prepare("SELECT * FROM diaries WHERE character_id=? ORDER BY day DESC")
+        .all(this.setting("character").id || "default")
+        .map((d) => {
+          const row = this.db
+            .prepare(
+              "SELECT payload FROM events WHERE source_id=? AND type='diary.composed' ORDER BY created_at DESC LIMIT 1",
+            )
+            .get(d.id);
+          let model;
+          try {
+            model = JSON.parse(row?.payload || "{}").model;
+          } catch {}
+          return { ...d, sources: JSON.parse(d.sources), model };
+        }),
       personas: this.db
         .prepare("SELECT * FROM personas ORDER BY created_at DESC")
         .all(),
@@ -609,8 +563,12 @@ export class Store {
       "agent_experiences",
       "style_observations",
       "bridge_receipts",
-      "memory_chunks","memory_chunk_state","memory_extract_progress",
-      "memory_supervisor_log","memory_candidates","memory_tool_diagnostics",
+      "memory_chunks",
+      "memory_chunk_state",
+      "memory_extract_progress",
+      "memory_supervisor_log",
+      "memory_candidates",
+      "memory_tool_diagnostics",
     ];
     return {
       format: "dear-moments",
@@ -642,11 +600,25 @@ export class Store {
       "agent_experiences",
       "style_observations",
       "bridge_receipts",
-      "memory_chunks","memory_chunk_state","memory_extract_progress",
-      "memory_supervisor_log","memory_candidates","memory_tool_diagnostics",
+      "memory_chunks",
+      "memory_chunk_state",
+      "memory_extract_progress",
+      "memory_supervisor_log",
+      "memory_candidates",
+      "memory_tool_diagnostics",
     ];
     for (const t of order) {
-      if(['memory_chunks','memory_chunk_state','memory_extract_progress','memory_supervisor_log','memory_candidates','memory_tool_diagnostics'].includes(t))data.tables[t]??=[];
+      if (
+        [
+          "memory_chunks",
+          "memory_chunk_state",
+          "memory_extract_progress",
+          "memory_supervisor_log",
+          "memory_candidates",
+          "memory_tool_diagnostics",
+        ].includes(t)
+      )
+        data.tables[t] ??= [];
       if (
         (data.version === 1 && t.startsWith("memory_")) ||
         (data.version === 1 &&
@@ -688,7 +660,11 @@ export class Store {
             ),
           );
       }
-      this.configure("memorySupervisor", { ...this.setting("memorySupervisor"), enabled: false, mode: "observe" });
+      this.configure("memorySupervisor", {
+        ...this.setting("memorySupervisor"),
+        enabled: false,
+        mode: "observe",
+      });
       for (const m of this.db.prepare("SELECT id,content FROM memories").all())
         this.db
           .prepare("INSERT INTO memory_fts VALUES(?,?)")
@@ -699,12 +675,31 @@ export class Store {
         this.db
           .prepare("INSERT INTO unit_fts VALUES(?,?)")
           .run(key.unit_id, tokenize(key.search_text).join(" "));
-      for(const c of this.db.prepare('SELECT id,text FROM memory_chunks').all())this.db.prepare('INSERT INTO chunk_fts VALUES(?,?)').run(c.id,tokenize(c.text).join(' '));
+      for (const c of this.db
+        .prepare("SELECT id,text FROM memory_chunks")
+        .all())
+        this.db
+          .prepare("INSERT INTO chunk_fts VALUES(?,?)")
+          .run(c.id, tokenize(c.text).join(" "));
     });
   }
   close() {
     this.db.close();
-    this.audit('closed');
+    this.audit("closed");
   }
-  audit(event,details={}){try{if(this.auditFile)appendFileSync(this.auditFile,JSON.stringify({time:new Date().toISOString(),event,pid:process.pid,runtime:process.versions.electron?'electron':'node',...details})+'\n');}catch{}}
+  audit(event, details = {}) {
+    try {
+      if (this.auditFile)
+        appendFileSync(
+          this.auditFile,
+          JSON.stringify({
+            time: new Date().toISOString(),
+            event,
+            pid: process.pid,
+            runtime: process.versions.electron ? "electron" : "node",
+            ...details,
+          }) + "\n",
+        );
+    } catch {}
+  }
 }

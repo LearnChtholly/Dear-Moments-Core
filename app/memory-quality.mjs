@@ -1,31 +1,58 @@
 // Shared memory-kind vocabulary. Kept here (not in memory-supervisor.mjs) so the
 // quality gate can be imported by the supervisor without a circular dependency.
 export const stableKindList = [
-  'preference', 'habit', 'project', 'relationship', 'commitment',
-  'fact', 'event', 'intention', 'hypothesis',
+  "preference",
+  "habit",
+  "project",
+  "relationship",
+  "commitment",
+  "fact",
+  "event",
+  "intention",
+  "hypothesis",
 ];
 export const stableKinds = new Set(stableKindList);
 export const localKinds = new Set(stableKindList);
-export const writableKinds = new Set(['preference', 'habit', 'project', 'commitment', 'fact']);
-export const personalKinds = new Set(['preference', 'habit', 'relationship']);
+export const writableKinds = new Set([
+  "preference",
+  "habit",
+  "project",
+  "commitment",
+  "fact",
+]);
+export const personalKinds = new Set(["preference", "habit", "relationship"]);
 export const repeatableKinds = new Set([
-  'preference', 'habit', 'project', 'relationship', 'commitment', 'fact',
+  "preference",
+  "habit",
+  "project",
+  "relationship",
+  "commitment",
+  "fact",
 ]);
 
-const requestStart = /^(?:请|帮我|能不能|可不可以|可以吗|能否|有没有|是不是|会不会|要不要|为什么|怎么(?:办|做|样)|你(?:能|可以|觉得|现在|去哪|在哪|怎么|为什么|是不是|有没有|会不会)|如果|假如|想不想)/;
-const explicitPlan = /(?:我|本人|用户)?(?:打算|计划|准备|想要|想在|以后会|之后会|将会|决定|承诺|答应)/;
+const requestStart =
+  /^(?:请|帮我|能不能|可不可以|可以吗|能否|有没有|是不是|会不会|要不要|为什么|怎么(?:办|做|样)|你(?:能|可以|觉得|现在|去哪|在哪|怎么|为什么|是不是|有没有|会不会)|如果|假如|想不想)/;
+const explicitPlan =
+  /(?:我|本人|用户)?(?:打算|计划|准备|想要|想在|以后会|之后会|将会|决定|承诺|答应)/;
 const explicitHypothesis = /(?:我猜|我觉得|可能|也许|估计|应该|大概|或许|推测)/;
-const jokeLike = /^(?:你这|你个|哈哈|嘿嘿).*(?:大肥鱼|吃白饭|笨|傻|摸鱼)|(?:开玩笑|逗你|角色扮演|哈哈哈)/;
-const emptyValue = /^(?:未知|不详|未提供|没有|无|unknown|null|undefined|可能包括|待定)$/i;
-const secret = /(?:bearer\s+[\w.-]+|sk-[\w-]{12,}|(?:api[_ -]?key|token|密码|password)\s*[:=：]\s*\S+)/i;
+const jokeLike =
+  /^(?:你这|你个|哈哈|嘿嘿).*(?:大肥鱼|吃白饭|笨|傻|摸鱼)|(?:开玩笑|逗你|角色扮演|哈哈哈)/;
+const emptyValue =
+  /^(?:未知|不详|未提供|没有|无|unknown|null|undefined|可能包括|待定)$/i;
+const secret =
+  /(?:bearer\s+[\w.-]+|sk-[\w-]{12,}|(?:api[_ -]?key|token|密码|password)\s*[:=：]\s*\S+)/i;
 
 // Hard noise: these are commands, paths, logs or code fragments, never a fact
 // about the person. Reject for every kind.
 const pathLike = /(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])/;
-const fileLike = /\b[\w-]+\.(?:exe|dll|mjs|cjs|js|ts|tsx|json|sqlite|db|md|log|pak|asar|py|ps1|cmd|bat|zip|png|jpe?g)\b/i;
-const commandLike = /(?:^|[\s，。；;、])(?:npm|npx|pnpm|yarn|node|git|pip|python|powershell|pwsh|taskkill|Get-|Set-|Start-Process|curl|winget|choco)\b/;
-const logLike = /(?:^|\n)\s*(?:at\s+\S+\s*\(|(?:Type|Syntax|Reference|Range|Uncaught)?Error:|\[exit code)/;
-const codeLike = /`{1,3}[^`]{1,300}`{1,3}|\b(?:const|let|var|function|import|export|class|await|async)\s+\w/;
+const fileLike =
+  /\b[\w-]+\.(?:exe|dll|mjs|cjs|js|ts|tsx|json|sqlite|db|md|log|pak|asar|py|ps1|cmd|bat|zip|png|jpe?g)\b/i;
+const commandLike =
+  /(?:^|[\s，。；;、])(?:npm|npx|pnpm|yarn|node|git|pip|python|powershell|pwsh|taskkill|Get-|Set-|Start-Process|curl|winget|choco)\b/;
+const logLike =
+  /(?:^|\n)\s*(?:at\s+\S+\s*\(|(?:Type|Syntax|Reference|Range|Uncaught)?Error:|\[exit code)/;
+const codeLike =
+  /`{1,3}[^`]{1,300}`{1,3}|\b(?:const|let|var|function|import|export|class|await|async)\s+\w/;
 const urlLike = /https?:\/\/\S+/;
 
 // Softer signal: the sentence is about technical things. Such a sentence may
@@ -36,28 +63,40 @@ const snakeCase = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/;
 const versionLike = /\b\d+\.\d+\.\d+\b|\b[a-z]+\d*\.\d+b?\b/i;
 
 export const technicalNoise = (text) =>
-  [pathLike, fileLike, commandLike, logLike, codeLike, urlLike].some((pattern) => pattern.test(String(text || '')));
+  [pathLike, fileLike, commandLike, logLike, codeLike, urlLike].some(
+    (pattern) => pattern.test(String(text || "")),
+  );
 
 export const technicalTopic = (text) =>
-  [fileLike, camelCase, snakeCase, versionLike].some((pattern) => pattern.test(String(text || '')));
+  [fileLike, camelCase, snakeCase, versionLike].some((pattern) =>
+    pattern.test(String(text || "")),
+  );
 
-export function factQuality(fact, userText, { source = 'local' } = {}) {
-  const quote = typeof fact?.quote === 'string' ? fact.quote.trim() : '';
-  const value = typeof fact?.value === 'string' ? fact.value.trim() : '';
-  const kind = String(fact?.kind || '');
+export function factQuality(fact, userText, { source = "local" } = {}) {
+  const quote = typeof fact?.quote === "string" ? fact.quote.trim() : "";
+  const value = typeof fact?.value === "string" ? fact.value.trim() : "";
+  const kind = String(fact?.kind || "");
   const reasons = [];
-  if (!localKinds.has(kind)) reasons.push('unknown_kind');
-  if (kind === 'tool_result') reasons.push('tool_result');
-  if (!quote || quote.length < 2) reasons.push('empty_quote');
-  if (!value || emptyValue.test(value)) reasons.push('empty_value');
-  if (typeof userText !== 'string' || !userText.includes(quote)) reasons.push('quote_not_in_user_text');
-  if (/[?？]\s*$/.test(quote) || requestStart.test(quote)) reasons.push('question_or_request');
-  if (jokeLike.test(quote) || /^(?:如果|假如|要是)/.test(quote)) reasons.push('joke_or_condition');
-  if (secret.test(quote) || secret.test(value)) reasons.push('credential_pattern');
-  if (technicalNoise(quote) || technicalNoise(value)) reasons.push('technical_noise');
-  else if (personalKinds.has(kind) && technicalTopic(`${quote} ${value}`)) reasons.push('technical_personal');
-  if (kind === 'intention' && !explicitPlan.test(quote)) reasons.push('unstated_intention');
-  if (kind === 'hypothesis' && !explicitHypothesis.test(quote)) reasons.push('unstated_hypothesis');
+  if (!localKinds.has(kind)) reasons.push("unknown_kind");
+  if (kind === "tool_result") reasons.push("tool_result");
+  if (!quote || quote.length < 2) reasons.push("empty_quote");
+  if (!value || emptyValue.test(value)) reasons.push("empty_value");
+  if (typeof userText !== "string" || !userText.includes(quote))
+    reasons.push("quote_not_in_user_text");
+  if (/[?？]\s*$/.test(quote) || requestStart.test(quote))
+    reasons.push("question_or_request");
+  if (jokeLike.test(quote) || /^(?:如果|假如|要是)/.test(quote))
+    reasons.push("joke_or_condition");
+  if (secret.test(quote) || secret.test(value))
+    reasons.push("credential_pattern");
+  if (technicalNoise(quote) || technicalNoise(value))
+    reasons.push("technical_noise");
+  else if (personalKinds.has(kind) && technicalTopic(`${quote} ${value}`))
+    reasons.push("technical_personal");
+  if (kind === "intention" && !explicitPlan.test(quote))
+    reasons.push("unstated_intention");
+  if (kind === "hypothesis" && !explicitHypothesis.test(quote))
+    reasons.push("unstated_hypothesis");
   // Direct callers may omit subject; MemoryCore supplies the safe default “用户”.
   return { ok: reasons.length === 0, reasons, quote, value, kind };
 }
@@ -66,9 +105,9 @@ export function shouldPromoteRepeated(fact, evidenceCount) {
   return repeatableKinds.has(fact.kind) && evidenceCount >= 2;
 }
 
-export function legacyFactQualityReason(row, userText = '') {
-  const result = factQuality(row, userText, { source: 'migration' });
-  return result.ok ? '' : `quality_gate:${result.reasons.join(',')}`;
+export function legacyFactQualityReason(row, userText = "") {
+  const result = factQuality(row, userText, { source: "migration" });
+  return result.ok ? "" : `quality_gate:${result.reasons.join(",")}`;
 }
 
 export const extractionPrompt = `

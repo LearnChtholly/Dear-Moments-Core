@@ -1,7 +1,11 @@
 const dayMs = 86_400_000;
-const localDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" });
-const temporal = /\d{4}-\d{2}-\d{2}|去年冬天|上个月|上月|本月|这个月|前天|昨天|今天|最近(?:7|七)天|近一周|上周|本周/g;
-const filler = /请问|告诉我|记不记得|还记得|现在|当时|那时|什么|怎么样|如何|哪些|哪种|多少|是不是|是否|有没有|的吗/g;
+const localDay = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Shanghai",
+});
+const temporal =
+  /\d{4}-\d{2}-\d{2}|去年冬天|上个月|上月|本月|这个月|前天|昨天|今天|最近(?:7|七)天|近一周|上周|本周/g;
+const filler =
+  /请问|告诉我|记不记得|还记得|现在|当时|那时|什么|怎么样|如何|哪些|哪种|多少|是不是|是否|有没有|的吗/g;
 
 export function interpretMemoryQuery(query, clock = new Date()) {
   const [year, month] = localDay.format(clock).split("-").map(Number);
@@ -30,12 +34,14 @@ export function interpretMemoryQuery(query, clock = new Date()) {
       from = midnight - (weekday - 1 + (date === "上周" ? 7 : 0)) * dayMs;
       end = from + 7 * dayMs;
     } else {
-      const offset = ({ 前天: -2, 昨天: -1, 今天: 0 })[date];
+      const offset = { 前天: -2, 昨天: -1, 今天: 0 }[date];
       from = midnight + (offset ?? -6) * dayMs;
       end = offset === undefined ? midnight + dayMs : from + dayMs;
     }
   }
-  const text = (from === undefined ? query : query.replace(temporal, " ")).replace(filler, " ").trim();
+  const text = (from === undefined ? query : query.replace(temporal, " "))
+    .replace(filler, " ")
+    .trim();
   return {
     text,
     from: from === undefined ? "" : new Date(from).toISOString(),
@@ -44,8 +50,25 @@ export function interpretMemoryQuery(query, clock = new Date()) {
 }
 
 export function evidenceTerms(query) {
-  const segments = query.toLowerCase().match(/[a-z0-9_.-]+|[\u3400-\u9fff]+/g) ?? [];
-  const ignored = new Set(["用户", "我", "你", "的", "了", "吗", "呢", "是", "在", "有", "和", "what", "the", "is", "my"]);
+  const segments =
+    query.toLowerCase().match(/[a-z0-9_.-]+|[\u3400-\u9fff]+/g) ?? [];
+  const ignored = new Set([
+    "用户",
+    "我",
+    "你",
+    "的",
+    "了",
+    "吗",
+    "呢",
+    "是",
+    "在",
+    "有",
+    "和",
+    "what",
+    "the",
+    "is",
+    "my",
+  ]);
   const terms = new Set();
   for (const s of segments) {
     if (ignored.has(s)) continue;
@@ -63,7 +86,9 @@ export function evidenceTerms(query) {
 
 export function hasEvidence(text, terms) {
   const value = String(text ?? "").toLowerCase();
-  return terms.some(term => /[a-z0-9]/.test(term)
-    ? (value.match(/[a-z0-9_.-]+/g) ?? []).includes(term)
-    : value.includes(term));
+  return terms.some((term) =>
+    /[a-z0-9]/.test(term)
+      ? (value.match(/[a-z0-9_.-]+/g) ?? []).includes(term)
+      : value.includes(term),
+  );
 }
